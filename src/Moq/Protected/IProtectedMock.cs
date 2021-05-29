@@ -108,7 +108,17 @@ namespace Moq.Protected
 		/// <param name="value">The property value. If argument matchers are used, 
 		/// remember to use <see cref="ItExpr"/> rather than <see cref="It"/>.</param>
 		/// <typeparam name="TProperty">The type of the property.</typeparam>
+		/// TODO should use value
 		ISetupSetter<TMock, TProperty> SetupSet<TProperty>(string propertyName, object value);
+
+		/// <summary>
+		/// Specifies a setup for an invocation on a property setter with the given 
+		/// <paramref name="propertyName"/>.
+		/// </summary>
+		/// <param name="propertyName">The name of the property.</param>
+		/// <param name="value">The property value. If argument matchers are used, 
+		/// remember to use <see cref="ItExpr"/> rather than <see cref="It"/>.</param>
+		ISetup<TMock> SetupSet(string propertyName, object value);
 
 		/// <summary>
 		/// Performs a sequence of actions, one per call.
@@ -306,9 +316,20 @@ namespace Moq.Protected
 		/// <param name="value">The property value.</param>
 		/// <typeparam name="TProperty">The type of the property. If argument matchers are used, 
 		/// remember to use <see cref="ItExpr"/> rather than <see cref="It"/>.</typeparam>
-		// TODO should receive args to support indexers
+		// TODO should use value
 		void VerifySet<TProperty>(string propertyName, Times times, object value);
 
+		/// <summary>
+		/// Specifies a setup for an invocation on a property setter with the given 
+		/// <paramref name="propertyName"/>.
+		/// </summary>
+		/// <exception cref="MockException">The invocation was not call the times specified by 
+		/// <paramref name="times"/>.</exception>
+		/// <param name="propertyName">The name of the property.</param>
+		/// <param name="times">The number of times a method is allowed to be called.</param>
+		/// <param name="value">The property value.</param>
+		/// remember to use <see cref="ItExpr"/> rather than <see cref="It"/>
+		void VerifySet(string propertyName, Times times, object value);
 		#endregion
 	}
 }
