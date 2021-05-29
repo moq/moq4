@@ -2,7 +2,7 @@
 // All rights reserved. Licensed under the BSD 3-Clause License; see License.txt.
 
 using System;
-
+using System.Reflection;
 using Moq.Protected;
 
 using Xunit;
@@ -204,6 +204,31 @@ namespace Moq.Tests
 		}
 
 		[Fact]
+		public void SetupShouldWorkWithIndexersByName()
+		{
+			// Already works if supply as a method get_Item
+
+			var mock = new Mock<FooBase>();
+			mock.Protected().Setup<int>(FooBase.IndexerName, new object[] { 1 }).Returns(2);
+
+			Assert.Equal(2, mock.Object.GetIndexer(1));
+
+			mock.Protected().Setup<int>(FooBase.IndexerName, new object[] { 1, "2" }).Returns(3);
+
+			Assert.Equal(3, mock.Object.GetMultipleIndexer(1, "2"));
+		}
+
+		[Fact]
+		public void SetUpShouldWorkWithIndexersByNameWithNonExactParameterMatching()
+		{
+			var mock = new Mock<FooBase>();
+			Assert.Throws<ArgumentException>(() => mock.Protected().Setup<int>(FooBase.IndexerName,true, new object[] { ItExpr.IsAny<IndexerClass>() }));
+
+			mock.Protected().Setup<int>(FooBase.IndexerName, false, new object[] { ItExpr.IsAny<IndexerClass>() }).Returns(123);
+			Assert.Equal(123, mock.Object.GetInterfaceIndexer(new IndexerClass()));
+		}
+
+		[Fact]
 		public void ThrowsIfSetupVoidMethodIsProperty()
 		{
 			Assert.Throws<ArgumentException>(() => new Mock<FooBase>().Protected().Setup("ProtectedValue"));
@@ -349,6 +374,49 @@ namespace Moq.Tests
 			Assert.Equal("foo", value);
 			mock.VerifyAll();
 		}
+
+		#region SetUpSet without TProperty - does not ignore Value parameter and supports indexers
+		[Fact]
+		public void SetUpSetDoesNotIgnoreValueParameter()
+		{
+			var mock = new Mock<FooBase>();
+			mock.Protected().SetupSet("ProtectedValue", "foo").Throws(ExpectedException.Instance);
+
+			Assert.Throws<ExpectedException>(() => mock.Object.SetProtectedValue("foo"));
+
+			mock.Object.SetProtectedValue("bar");
+		}
+		[Fact]
+		public void SetupSetSetsUpProtectedIndexerWhenMultiple()
+		{
+			var mock = new Mock<FooBase>();
+			int indexerSet = 0;
+			int indexedWith = 0;
+
+			mock.Protected().SetupSet(FooBase.IndexerName, new object[] { 1, 2 }).Callback<int, int>((index, i) =>
+			{
+				indexedWith = index;
+				indexerSet = i;
+			});
+
+			mock.Object.SetIndexer(2, 3);
+			Assert.Equal(0, indexerSet);
+			Assert.Equal(0, indexedWith);
+
+			mock.Object.SetIndexer(1, 2);
+			Assert.Equal(2, indexerSet);
+			Assert.Equal(1, indexedWith);
+		}
+
+		[Fact]
+		public void SetUpSetWorksWithExpressions()
+		{
+			var mock = new Mock<FooBase>();
+			mock.Protected().SetupSet(FooBase.IndexerName, new object[] { 999, ItExpr.IsAny<string>(), ItExpr.IsAny<int>() }).Throws(ExpectedException.Instance);
+			Assert.Throws<ExpectedException>(() => mock.Object.SetMultipleIndexer(999, "throws", 999));
+			mock.Object.SetMultipleIndexer(123, "No throw", 1);
+		}
+		#endregion
 
 		[Fact]
 		public void ThrowsIfNullArgs()
@@ -686,6 +754,24 @@ namespace Moq.Tests
 		}
 
 		[Fact]
+		public void VerifyShouldWorkWithIndexersByName()
+		{
+			var mock = new Mock<FooBase>();
+
+			void Verify(Times times)
+			{
+				mock.Protected().Verify<int>(FooBase.IndexerName, times, new object[] { 1 });
+			}
+
+			Verify(Times.Never());
+
+			mock.Object.GetIndexer(2);
+			Verify(Times.Never());
+
+			mock.Object.GetIndexer(1);
+			Verify(Times.Once());
+		}
+		[Fact]
 		public void ThrowsIfVerifyGetNullPropertyName()
 		{
 			Assert.Throws<ArgumentNullException>(() => new Mock<FooBase>().Protected().VerifyGet<int>(null, Times.Once()));
@@ -840,6 +926,69 @@ namespace Moq.Tests
 			mock.Protected().VerifySet<string>("ProtectedValue", Times.Exactly(2), ItExpr.IsAny<int>());
 		}
 
+		#region VerifySet without TProperty - does not ignore Value parameter and supports indexers
+		[Fact]
+		public void VerifySetUsesValueParameterWhenConstant()
+		{
+			var mock = new Mock<FooBase>();
+			mock.Object.SetProtectedValue("foo");
+
+			Assert.Throws<MockException>(() => mock.Protected().VerifySet("ProtectedValue", Times.Once(), "bar"));
+			mock.Protected().VerifySet("ProtectedValue", Times.Once(), "foo");
+		}
+
+		[Fact]
+		public void VerifySetUsesValueParameterWhenExpression()
+		{
+			var mock = new Mock<FooBase>();
+			mock.Object.SetProtectedValue("foo");
+
+			Assert.ThrowsAny<Exception>(() => mock.Protected().VerifySet("ProtectedValue", Times.Once(), ItExpr.Is<string>(v => v.StartsWith("b"))));
+			mock.Protected().VerifySet("ProtectedValue", Times.Once(), ItExpr.Is<string>(v => v.StartsWith("f")));
+		}
+
+		[Fact]
+		public void VerifySetVerifiesProtectedIndexerSetters()
+		{
+			var mock = new Mock<FooBase>();
+			mock.Object.SetIndexer(6, 3);
+			Assert.Throws<Moq.MockException>(() =>
+				mock.Protected().VerifySet(
+					FooBase.IndexerName,
+					Times.Once(),
+					new object[] { ItExpr.IsInRange(1, 5, Range.Inclusive), ItExpr.IsAny<int>() }));
+
+			mock.Protected().VerifySet(
+					FooBase.IndexerName,
+					Times.Once(),
+					new object[] { ItExpr.IsInRange(6, 10, Range.Inclusive), ItExpr.IsAny<int>() });
+
+		}
+		#endregion
+
+		[Fact]
+		public void SetUpSequenceShouldWorkWithIndexersByName()
+		{
+			var mock = new Mock<FooBase>();
+			mock.Protected().SetupSequence<int>(FooBase.IndexerName, new object[] { 1 })
+				.Returns(1)
+				.Returns(2)
+				.Throws(ExpectedException.Instance);
+
+			Assert.Equal(1, mock.Object.GetIndexer(1));
+			Assert.Equal(2, mock.Object.GetIndexer(1));
+			Assert.Throws<ExpectedException>(() => mock.Object.GetIndexer(1));
+
+			mock.Protected().SetupSequence<int>(FooBase.IndexerName, new object[] { 1, "2" })
+				.Returns(3)
+				.Returns(4)
+				.Throws(ExpectedException.Instance);
+
+			Assert.Equal(3, mock.Object.GetMultipleIndexer(1, "2"));
+			Assert.Equal(4, mock.Object.GetMultipleIndexer(1, "2"));
+			Assert.Throws<ExpectedException>(() => mock.Object.GetMultipleIndexer(1, "2"));
+
+		}
 		public class MethodOverloads
 		{
 			public void ExecuteDo(int a, int b)
@@ -935,6 +1084,16 @@ namespace Moq.Tests
 			}
 		}
 
+		public interface IIndexerInterface
+		{
+
+		}
+
+		public class IndexerClass : IIndexerInterface
+		{
+
+		}
+
 		public class FooBase
 		{
 			public virtual string PublicValue { get; set; }
@@ -955,10 +1114,50 @@ namespace Moq.Tests
 
 			protected virtual string ProtectedValue { get; set; }
 
+			public const string IndexerName = "Indexer";
+			[System.Runtime.CompilerServices.IndexerName(IndexerName)]
 			protected virtual int this[int index]
 			{
 				get { return 0; }
 				set { }
+			}
+
+			public void SetIndexer(int index, int value)
+			{
+				this[index] = value;
+			}
+
+			public int GetIndexer(int index)
+			{
+				return this[index];
+			}
+
+			[System.Runtime.CompilerServices.IndexerName(IndexerName)]
+			protected virtual int this[int i, string s]
+			{
+				get { return 0; }
+				set { }
+			}
+			public void SetMultipleIndexer(int index, string sIndex, int value)
+			{
+				this[index, sIndex] = value;
+			}
+
+			public int GetMultipleIndexer(int index, string sIndex)
+			{
+				return this[index, sIndex];
+			}
+
+			[System.Runtime.CompilerServices.IndexerName(IndexerName)]
+			protected virtual int this[IIndexerInterface index]
+			{
+				get { return 0; }
+				set { }
+			}
+
+			public int GetInterfaceIndexer(IIndexerInterface index)
+			{
+				return this[index];
 			}
 
 			public void DoProtected()
@@ -1093,5 +1292,12 @@ namespace Moq.Tests
 		public class MyBase { }
 
 		public class MyDerived : MyBase { }
+
+		public class ExpectedException : Exception
+		{
+			private static ExpectedException expectedException = new ExpectedException();
+			public static ExpectedException Instance => expectedException;
+		}
+
 	}
 }
