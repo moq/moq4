@@ -760,7 +760,7 @@ namespace Moq.Tests
 
 			void Verify(Times times)
 			{
-				mock.Protected().Verify(FooBase.IndexerName, times, new object[] { 1 });
+				mock.Protected().Verify<int>(FooBase.IndexerName, times, new object[] { 1 });
 			}
 
 			Verify(Times.Never());
