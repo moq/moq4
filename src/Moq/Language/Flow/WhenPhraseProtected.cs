@@ -1,4 +1,4 @@
-// Copyright (c) 2007, Clarius Consulting, Manas Technology Solutions, InSTEDD, and Contributors.
+﻿// Copyright (c) 2007, Clarius Consulting, Manas Technology Solutions, InSTEDD, and Contributors.
 // All rights reserved. Licensed under the BSD 3-Clause License; see License.txt.
 
 using System;
@@ -6,28 +6,24 @@ using System.Diagnostics;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
-
-using Moq.Language;
-using Moq.Language.Flow;
 using Moq.Properties;
+using Moq.Protected;
 
-namespace Moq.Protected
+namespace Moq.Language.Flow
 {
-	internal sealed class ProtectedAsMock<T, TAnalog> : IProtectedAsMock<T, TAnalog>
+	internal sealed class WhenPhraseProtected<T,TAnalog> : ISetupConditionResultProtected<T,TAnalog>
 		where T : class
 		where TAnalog : class
 	{
-		private Mock<T> mock;
-
-		public Mock<T> Mocked { get => mock; }
-
 		private static DuckReplacer DuckReplacerInstance = new DuckReplacer(typeof(TAnalog), typeof(T));
 
-		public ProtectedAsMock(Mock<T> mock)
-		{
-			Debug.Assert(mock != null);
+		private Mock<T> mock;
+		private Condition condition;
 
-			this.mock = mock;
+		public WhenPhraseProtected(IProtectedAsMock<T, TAnalog> protectedAsMock, Condition condition)
+		{
+			mock = protectedAsMock.Mocked;
+			this.condition = condition;
 		}
 
 		public ISetup<T> Setup(Expression<Action<TAnalog>> expression)
@@ -44,7 +40,7 @@ namespace Moq.Protected
 				throw new ArgumentException(ex.Message, nameof(expression));
 			}
 
-			var setup = Mock.Setup(this.mock, rewrittenExpression, null);
+			var setup = Mock.Setup(this.mock, rewrittenExpression, condition);
 			return new VoidSetupPhrase<T>(setup);
 		}
 
@@ -62,7 +58,7 @@ namespace Moq.Protected
 				throw new ArgumentException(ex.Message, nameof(expression));
 			}
 
-			var setup = Mock.Setup(this.mock, rewrittenExpression, null);
+			var setup = Mock.Setup(this.mock, rewrittenExpression, condition);
 			return new NonVoidSetupPhrase<T, TResult>(setup);
 		}
 
@@ -80,112 +76,18 @@ namespace Moq.Protected
 				throw new ArgumentException(ex.Message, nameof(expression));
 			}
 
-			var setup = Mock.SetupGet(this.mock, rewrittenExpression, null);
+			var setup = Mock.SetupGet(this.mock, rewrittenExpression, condition);
 			return new NonVoidSetupPhrase<T, TProperty>(setup);
 		}
 
-		public Mock<T> SetupProperty<TProperty>(Expression<Func<TAnalog, TProperty>> expression, TProperty initialValue = default(TProperty))
+		public ISetupSetter<T, TProperty> SetupSet<TProperty>(Action<TAnalog> setterExpression)
 		{
-			Guard.NotNull(expression, nameof(expression));
-
-			Expression<Func<T, TProperty>> rewrittenExpression;
-			try
-			{
-				rewrittenExpression = (Expression<Func<T, TProperty>>)ReplaceDuck(expression);
-			}
-			catch (ArgumentException ex)
-			{
-				throw new ArgumentException(ex.Message, nameof(expression));
-			}
-
-			return this.mock.SetupProperty<TProperty>(rewrittenExpression, initialValue);
+			throw new NotImplementedException();
 		}
 
-		public ISetupSequentialResult<TResult> SetupSequence<TResult>(Expression<Func<TAnalog, TResult>> expression)
+		public ISetup<T> SetupSet(Action<TAnalog> setterExpression)
 		{
-			Guard.NotNull(expression, nameof(expression));
-
-			Expression<Func<T, TResult>> rewrittenExpression;
-			try
-			{
-				rewrittenExpression = (Expression<Func<T, TResult>>)ReplaceDuck(expression);
-			}
-			catch (ArgumentException ex)
-			{
-				throw new ArgumentException(ex.Message, nameof(expression));
-			}
-
-			var setup = Mock.SetupSequence(this.mock, rewrittenExpression);
-			return new SetupSequencePhrase<TResult>(setup);
-		}
-
-		public ISetupSequentialAction SetupSequence(Expression<Action<TAnalog>> expression)
-		{
-			Guard.NotNull(expression, nameof(expression));
-
-			Expression<Action<T>> rewrittenExpression;
-			try
-			{
-				rewrittenExpression = (Expression<Action<T>>)ReplaceDuck(expression);
-			}
-			catch (ArgumentException ex)
-			{
-				throw new ArgumentException(ex.Message, nameof(expression));
-			}
-
-			var setup = Mock.SetupSequence(this.mock, rewrittenExpression);
-			return new SetupSequencePhrase(setup);
-		}
-
-		public void Verify(Expression<Action<TAnalog>> expression, Times? times = null, string failMessage = null)
-		{
-			Guard.NotNull(expression, nameof(expression));
-
-			Expression<Action<T>> rewrittenExpression;
-			try
-			{
-				rewrittenExpression = (Expression<Action<T>>)ReplaceDuck(expression);
-			}
-			catch (ArgumentException ex)
-			{
-				throw new ArgumentException(ex.Message, nameof(expression));
-			}
-
-			Mock.Verify(this.mock, rewrittenExpression, times ?? Times.AtLeastOnce(), failMessage);
-		}
-
-		public void Verify<TResult>(Expression<Func<TAnalog, TResult>> expression, Times? times = null, string failMessage = null)
-		{
-			Guard.NotNull(expression, nameof(expression));
-
-			Expression<Func<T, TResult>> rewrittenExpression;
-			try
-			{
-				rewrittenExpression = (Expression<Func<T, TResult>>)ReplaceDuck(expression);
-			}
-			catch (ArgumentException ex)
-			{
-				throw new ArgumentException(ex.Message, nameof(expression));
-			}
-
-			Mock.Verify(this.mock, rewrittenExpression, times ?? Times.AtLeastOnce(), failMessage);
-		}
-
-		public void VerifyGet<TProperty>(Expression<Func<TAnalog, TProperty>> expression, Times? times = null, string failMessage = null)
-		{
-			Guard.NotNull(expression, nameof(expression));
-
-			Expression<Func<T, TProperty>> rewrittenExpression;
-			try
-			{
-				rewrittenExpression = (Expression<Func<T, TProperty>>)ReplaceDuck(expression);
-			}
-			catch (ArgumentException ex)
-			{
-				throw new ArgumentException(ex.Message, nameof(expression));
-			}
-
-			Mock.VerifyGet(this.mock, rewrittenExpression, times ?? Times.AtLeastOnce(), failMessage);
+			throw new NotImplementedException();
 		}
 
 		private static LambdaExpression ReplaceDuck(LambdaExpression expression)
@@ -196,9 +98,7 @@ namespace Moq.Protected
 			return Expression.Lambda(DuckReplacerInstance.Visit(expression.Body), targetParameter);
 		}
 
-		/// <summary>
-		/// <see cref="ExpressionVisitor"/> used to replace occurrences of `TAnalog.Member` sub-expressions with `T.Member`.
-		/// </summary>
+
 		private sealed class DuckReplacer : ExpressionVisitor
 		{
 			private Type duckType;
@@ -255,10 +155,10 @@ namespace Moq.Protected
 			private MethodInfo FindCorrespondingMethod(MethodInfo duckMethod)
 			{
 				var candidateTargetMethods =
-				    this.targetType
-				    .GetMethods(BindingFlags.NonPublic | BindingFlags.Instance)
-				    .Where(ctm => IsCorrespondingMethod(duckMethod, ctm))
-				    .ToArray();
+					this.targetType
+					.GetMethods(BindingFlags.NonPublic | BindingFlags.Instance)
+					.Where(ctm => IsCorrespondingMethod(duckMethod, ctm))
+					.ToArray();
 
 				if (candidateTargetMethods.Length == 0)
 				{
@@ -281,10 +181,10 @@ namespace Moq.Protected
 			private PropertyInfo FindCorrespondingProperty(PropertyInfo duckProperty)
 			{
 				var candidateTargetProperties =
-				    this.targetType
-				    .GetProperties(BindingFlags.NonPublic | BindingFlags.Instance)
-				    .Where(ctp => IsCorrespondingProperty(duckProperty, ctp))
-				    .ToArray();
+					this.targetType
+					.GetProperties(BindingFlags.NonPublic | BindingFlags.Instance)
+					.Where(ctp => IsCorrespondingProperty(duckProperty, ctp))
+					.ToArray();
 
 				if (candidateTargetProperties.Length == 0)
 				{
@@ -358,12 +258,13 @@ namespace Moq.Protected
 			private static bool IsCorrespondingProperty(PropertyInfo duckProperty, PropertyInfo candidateTargetProperty)
 			{
 				return candidateTargetProperty.Name == duckProperty.Name
-				    && candidateTargetProperty.PropertyType == duckProperty.PropertyType
-				    && candidateTargetProperty.CanRead(out _) == duckProperty.CanRead(out _)
-				    && candidateTargetProperty.CanWrite(out _) == duckProperty.CanWrite(out _);
+					&& candidateTargetProperty.PropertyType == duckProperty.PropertyType
+					&& candidateTargetProperty.CanRead(out _) == duckProperty.CanRead(out _)
+					&& candidateTargetProperty.CanWrite(out _) == duckProperty.CanWrite(out _);
 
 				// TODO: parameter lists should be compared, too, to properly support indexers.
 			}
 		}
+
 	}
 }

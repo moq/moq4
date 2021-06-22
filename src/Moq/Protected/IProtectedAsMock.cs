@@ -25,6 +25,10 @@ namespace Moq.Protected
 		where TAnalog : class
 	{
 		/// <summary>
+		///  gets the mock
+		/// </summary>
+		Mock<T> Mocked { get; }
+		/// <summary>
 		/// Specifies a setup on the mocked type for a call to a <see langword="void"/> method.
 		/// </summary>
 		/// <param name="expression">Lambda expression that specifies the expected method invocation.</param>
