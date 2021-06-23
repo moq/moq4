@@ -64,6 +64,24 @@ namespace Moq.Protected
 			return new NonVoidSetupPhrase<T, TResult>(setup);
 		}
 
+		public ISetupSetter<T, TProperty> SetupSet<TProperty>(Action<TAnalog> setterExpression)
+		{
+			Guard.NotNull(setterExpression, nameof(setterExpression));
+
+			var rewrittenExpression = ReconstructAndReplaceSetter(setterExpression);
+			var setup = Mock.SetupSet(mock, rewrittenExpression, condition: null);
+			return new SetterSetupPhrase<T, TProperty>(setup);
+		}
+
+		public ISetup<T> SetupSet(Action<TAnalog> setterExpression)
+		{
+			Guard.NotNull(setterExpression, nameof(setterExpression));
+
+			var rewrittenExpression = ReconstructAndReplaceSetter(setterExpression);
+			var setup = Mock.SetupSet(mock, rewrittenExpression, condition: null);
+			return new VoidSetupPhrase<T>(setup);
+		}
+
 		public ISetupGetter<T, TProperty> SetupGet<TProperty>(Expression<Func<TAnalog, TProperty>> expression)
 		{
 			Guard.NotNull(expression, nameof(expression));
@@ -169,6 +187,14 @@ namespace Moq.Protected
 			Mock.Verify(this.mock, rewrittenExpression, times ?? Times.AtLeastOnce(), failMessage);
 		}
 
+		public void VerifySet(Action<TAnalog> setterExpression, Times? times = null, string failMessage = null)
+		{
+			Guard.NotNull(setterExpression, nameof(setterExpression));
+
+			var rewrittenExpression = ReconstructAndReplaceSetter(setterExpression);
+			Mock.VerifySet(mock, rewrittenExpression, times.HasValue ? times.Value : Times.AtLeastOnce(), failMessage);
+		}
+
 		public void VerifyGet<TProperty>(Expression<Func<TAnalog, TProperty>> expression, Times? times = null, string failMessage = null)
 		{
 			Guard.NotNull(expression, nameof(expression));
@@ -184,6 +210,12 @@ namespace Moq.Protected
 			}
 
 			Mock.VerifyGet(this.mock, rewrittenExpression, times ?? Times.AtLeastOnce(), failMessage);
+		}
+
+		private LambdaExpression ReconstructAndReplaceSetter(Action<TAnalog> setterExpression)
+		{
+			var expression = ExpressionReconstructor.Instance.ReconstructExpression(setterExpression, mock.ConstructorArguments);
+			return ReplaceDuck(expression);
 		}
 
 		private static LambdaExpression ReplaceDuck(LambdaExpression expression)
@@ -214,11 +246,21 @@ namespace Moq.Protected
 				{
 					var targetParameter = Expression.Parameter(this.targetType, left.Name);
 					return Expression.Call(targetParameter, FindCorrespondingMethod(node.Method), node.Arguments);
-				}
+				} 
 				else
 				{
-					return node;
+					return base.VisitMethodCall(node);
 				}
+			}
+
+			protected override Expression VisitIndex(IndexExpression node)
+			{
+				if (node.Object is ParameterExpression left && left.Type == this.duckType)
+				{
+					var targetParameter = Expression.Parameter(this.targetType, left.Name);
+					return Expression.MakeIndex(targetParameter, FindCorrespondingProperty(node.Indexer), node.Arguments);
+				}
+				return base.VisitIndex(node);
 			}
 
 			protected override Expression VisitMember(MemberExpression node)
@@ -230,7 +272,7 @@ namespace Moq.Protected
 				}
 				else
 				{
-					return node;
+					return base.VisitMember(node);
 				}
 			}
 
@@ -280,7 +322,7 @@ namespace Moq.Protected
 			{
 				var candidateTargetProperties =
 				    this.targetType
-				    .GetProperties(BindingFlags.NonPublic | BindingFlags.Instance)
+				    .GetProperties(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance)
 				    .Where(ctp => IsCorrespondingProperty(duckProperty, ctp))
 				    .ToArray();
 

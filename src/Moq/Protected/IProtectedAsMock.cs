@@ -39,6 +39,41 @@ namespace Moq.Protected
 		/// <seealso cref="Mock{T}.Setup{TResult}(Expression{Func{T, TResult}})"/>
 		ISetup<T, TResult> Setup<TResult>(Expression<Func<TAnalog, TResult>> expression);
 
+
+		/// <summary>
+		///   Specifies a setup on the mocked type for a call to a property setter.
+		/// </summary>
+		/// <param name="setterExpression">The Lambda expression that sets a property to a value.</param>
+		/// <typeparam name="TProperty">Type of the property.</typeparam>
+		/// <remarks>
+		///   If more than one setup is set for the same property setter,
+		///   the latest one wins and is the one that will be executed.
+		///   <para>
+		///     This overloads allows the use of a callback already typed for the property type.
+		///   </para>
+		/// </remarks>
+		/// <example group="setups">
+		///   <code>
+		///     mock.SetupSet&lt;bool&gt;(x => x.Suspended = true);
+		///   </code>
+		/// </example>
+		ISetupSetter<T, TProperty> SetupSet<TProperty>(Action<TAnalog> setterExpression);
+
+		/// <summary>
+		///   Specifies a setup on the mocked type for a call to a property setter.
+		/// </summary>
+		/// <param name="setterExpression">Lambda expression that sets a property to a value.</param>
+		/// <remarks>
+		///   If more than one setup is set for the same property setter,
+		///   the latest one wins and is the one that will be executed.
+		/// </remarks>
+		/// <example group="setups">
+		///   <code>
+		///     mock.SetupSet(x => x.Suspended = true);
+		///   </code>
+		/// </example>
+		ISetup<T> SetupSet(Action<TAnalog> setterExpression);
+
 		/// <summary>
 		/// Specifies a setup on the mocked type for a call to a property getter.
 		/// </summary>
@@ -95,6 +130,20 @@ namespace Moq.Protected
 		/// <param name="failMessage">Message to include in the thrown <see cref="MockException"/> if verification fails.</param>
 		/// <exception cref="MockException">The specified invocation did not occur (or did not occur the specified number of times).</exception>
 		void Verify<TResult>(Expression<Func<TAnalog, TResult>> expression, Times? times = null, string failMessage = null);
+
+		/// <summary>
+		///   Verifies that a property was set on the mock.
+		/// </summary>
+		/// <param name="setterExpression">Expression to verify.</param>
+		/// <param name="times">
+		/// Number of times that the setter is expected to have occurred.
+		/// If omitted, assumed to be <see cref="Times.AtLeastOnce"/>.
+		/// </param>
+		/// <param name="failMessage">Message to show if verification fails.</param>
+		/// <exception cref="MockException">
+		///   The invocation was not called the number of times specified by <paramref name="times"/>.
+		/// </exception>
+		void VerifySet(Action<TAnalog> setterExpression, Times? times = null, string failMessage = null);
 
 		/// <summary>
 		/// Verifies that a property was read on the mock.

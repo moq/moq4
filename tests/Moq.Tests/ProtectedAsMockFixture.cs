@@ -131,6 +131,13 @@ namespace Moq.Tests
 		}
 
 		[Fact]
+		public void Setup_can_automock()
+		{
+			this.protectedMock.Setup(m => m.Nested.Method(1)).Returns(123);
+			Assert.Equal(123, mock.Object.GetNested().Method(1));
+		}
+
+		[Fact]
 		public void SetupGet_can_setup_readonly_property()
 		{
 			this.protectedMock.SetupGet(m => m.ReadOnlyPropertyImpl).Returns(42);
@@ -146,6 +153,26 @@ namespace Moq.Tests
 			this.protectedMock.SetupGet(m => m.ReadWritePropertyImpl).Returns(42);
 
 			var actual = this.mock.Object.ReadWriteProperty;
+
+			Assert.Equal(42, actual);
+		}
+
+		[Fact]
+		public void SetUpGet_can_automock()
+		{
+			this.protectedMock.SetupGet(m => m.Nested.Value).Returns(42);
+
+			var actual = mock.Object.GetNested().Value;
+
+			Assert.Equal(42, actual);
+		}
+
+		[Fact]
+		public void SetupGet_can_setup_virtual_property()
+		{
+			this.protectedMock.SetupGet(m => m.VirtualGet).Returns(42);
+
+			var actual = mock.Object.GetVirtual();
 
 			Assert.Equal(42, actual);
 		}
@@ -211,6 +238,96 @@ namespace Moq.Tests
 			this.mock.Object.DoSomething();
 
 			Assert.IsType<InvalidOperationException>(exception);
+		}
+
+		[Fact]
+		public void SetUpSet_should_setup_setters()
+		{
+			this.protectedMock.SetupSet(fish => fish.ReadWritePropertyImpl = 999).Throws(ExpectedException.Instance);
+
+			mock.Object.ReadWriteProperty = 123;
+
+			Assert.Throws<ExpectedException>(() => mock.Object.ReadWriteProperty = 999);
+		}
+
+		[Fact]
+		public void SetUpSet_should_setup_setters_with_property_type()
+		{
+			int value = 0;
+			this.protectedMock.SetupSet<int>(fish => fish.ReadWritePropertyImpl = 999).Callback(i => value = i);
+
+			mock.Object.ReadWriteProperty = 123;
+			Assert.Equal(0, value);
+
+			mock.Object.ReadWriteProperty = 999;
+			Assert.Equal(999, value);
+		}
+
+		[Fact]
+		public void SetUpSet_should_work_recursively()
+		{
+			this.protectedMock.SetupSet(f => f.Nested.Value = 999).Throws(ExpectedException.Instance);
+
+			mock.Object.GetNested().Value = 1;
+			
+			Assert.Throws<ExpectedException>(() => mock.Object.GetNested().Value = 999);
+		}
+
+		[Fact]
+		public void SetUpSet_Should_Work_With_Indexers()
+		{
+			this.protectedMock.SetupSet(
+				o => o[
+					It.IsInRange(0, 5, Range.Inclusive),
+					It.IsIn("Bad", "JustAsBad")
+				] = It.Is<int>(i => i > 10)
+			).Throws(ExpectedException.Instance);
+
+			mock.Object.SetMultipleIndexer(1, "Ok", 999);
+
+			Assert.Throws<ExpectedException>(() => mock.Object.SetMultipleIndexer(1, "Bad", 999));
+		}
+
+		[Fact]
+		public void SetupSet_can_setup_virtual_property()
+		{
+			this.protectedMock.SetupSet(m => m.VirtualSet = 999).Throws(new ExpectedException());
+
+			mock.Object.SetVirtual(123);
+			Assert.Throws<ExpectedException>(() => mock.Object.SetVirtual(999));
+		}
+
+		[Fact]
+		public void VerifySet_Should_Work()
+		{
+			void VerifySet(Times? times = null,string failMessage = null)
+			{
+				this.protectedMock.VerifySet(
+				o => o[
+					It.IsInRange(0, 5, Moq.Range.Inclusive),
+					It.IsIn("Bad", "JustAsBad")
+				] = It.Is<int>(i => i > 10),
+				times,
+				failMessage
+				);
+			}
+			VerifySet(Times.Never());
+
+			mock.Object.SetMultipleIndexer(1, "Ok", 1);
+			VerifySet(Times.Never());
+
+			Assert.Throws<MockException>(() => VerifySet()); // AtLeastOnce
+
+			mock.Object.SetMultipleIndexer(1, "Bad", 999);
+			VerifySet(); // AtLeastOnce
+			
+			mock.Object.SetMultipleIndexer(1, "JustAsBad", 12);
+			VerifySet(Times.Exactly(2));
+
+			Assert.Throws<MockException>(() => VerifySet(Times.AtMostOnce()));
+
+			var mockException = Assert.Throws<MockException>(() => VerifySet(Times.AtMostOnce(),"custom fail message"));
+			Assert.StartsWith("custom fail message", mockException.Message);
 		}
 
 		[Fact]
@@ -298,10 +415,53 @@ namespace Moq.Tests
 			Assert.Contains("Was not queried.", exception.Message);
 		}
 
+		public interface INested
+		{
+			int Value { get; set; }
+			int Method(int value);
+		}
+
 		public abstract class Foo
 		{
 			protected Foo()
 			{
+			}
+			private int _virtualSet;
+			public virtual int VirtualSet
+			{
+				get
+				{
+					return _virtualSet;
+				}
+				protected set
+				{
+					_virtualSet = value;
+				}
+
+			}
+
+			public void SetVirtual(int value)
+			{
+				VirtualSet = value;
+			}
+
+			private int _virtualGet;
+			public virtual int VirtualGet
+			{
+				protected get
+				{
+					return _virtualGet;
+				}
+				set
+				{
+					_virtualGet = value;
+				}
+
+			}
+
+			public int GetVirtual()
+			{
+				return VirtualGet;
 			}
 
 			public int ReadOnlyProperty => this.ReadOnlyPropertyImpl;
@@ -336,10 +496,31 @@ namespace Moq.Tests
 			protected abstract void DoSomethingImpl(int arg);
 
 			protected abstract int GetSomethingImpl();
+
+			protected abstract INested Nested { get; set; }
+
+			public INested GetNested()
+			{
+				return Nested;
+			}
+
+			protected abstract int this[int i, string s] { get; set; }
+
+			public void SetMultipleIndexer(int index, string sIndex, int value)
+			{
+				this[index, sIndex] = value;
+			}
+
+			public int GetMultipleIndexer(int index, string sIndex)
+			{
+				return this[index, sIndex];
+			}
 		}
 
 		public interface Fooish
 		{
+			int VirtualGet { get; set; }
+			int VirtualSet { get; set; }
 			int ReadOnlyPropertyImpl { get; }
 			int ReadWritePropertyImpl { get; set; }
 			int NonExistentProperty { get; }
@@ -347,6 +528,8 @@ namespace Moq.Tests
 			void DoSomethingImpl(int arg);
 			int GetSomethingImpl();
 			void NonExistentMethod();
+			INested Nested { get; set; }
+			int this[int i, string s] { get; set; }
 		}
 
 		public abstract class MessageHandlerBase
@@ -365,6 +548,12 @@ namespace Moq.Tests
 		public interface MessageHandlerBaseish
 		{
 			void HandleImpl<TMessage>(TMessage message);
+		}
+
+		public class ExpectedException : Exception
+		{
+			private static ExpectedException expectedException = new ExpectedException();
+			public static ExpectedException Instance => expectedException;
 		}
 	}
 }

@@ -480,7 +480,7 @@ namespace Moq
 		///   Specifies a setup on the mocked type for a call to a property setter.
 		/// </summary>
 		/// <param name="setterExpression">The Lambda expression that sets a property to a value.</param>
-		/// <typeparam name="TProperty">Type of the property. Typically omitted as it can be inferred from the expression.</typeparam>
+		/// <typeparam name="TProperty">Type of the property.</typeparam>
 		/// <remarks>
 		///   If more than one setup is set for the same property setter,
 		///   the latest one wins and is the one that will be executed.
