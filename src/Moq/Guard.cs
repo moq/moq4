@@ -2,8 +2,10 @@
 // All rights reserved. Licensed under the BSD 3-Clause License; see License.txt.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -239,6 +241,43 @@ namespace Moq
 					Resources.PropertySetNotFound,
 					property.DeclaringType.Name, property.Name));
 			}
+		}
+
+		public static void IsIndexerGetter(LambdaExpression expression,string paramName)
+		{
+			if (expression.Body is MethodCallExpression methodCall)
+			{
+				var method = methodCall.Method;
+				var isGetAccessor = method.IsGetAccessor();
+				var isIndexerAccessor = method.IsIndexerAccessor();
+				if (isGetAccessor && isIndexerAccessor)
+				{
+					return;
+				}
+			}
+
+			throw new ArgumentException(
+				string.Format(
+					CultureInfo.CurrentCulture,
+					Resources.SetupNotIndexerGetter,
+					expression.ToStringFixed()),
+				paramName);
+
+		}
+
+		public static void AreConstantExpressions(IEnumerable<Expression> expressions,string paramName)
+		{
+			var notConstantExpression = expressions.FirstOrDefault(arg => !(arg is ConstantExpression));
+			if(notConstantExpression != null)
+			{
+				throw new ArgumentException(
+				string.Format(
+					CultureInfo.CurrentCulture,
+					Resources.ArgumentsNotConstantExpressions,
+					notConstantExpression.ToStringFixed()),
+				paramName);
+			}
+			
 		}
 	}
 }

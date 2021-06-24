@@ -1,12 +1,61 @@
 // Copyright (c) 2007, Clarius Consulting, Manas Technology Solutions, InSTEDD, and Contributors.
 // All rights reserved. Licensed under the BSD 3-Clause License; see License.txt.
 
+using System;
+using System.Globalization;
+using System.Linq.Expressions;
+using Moq.Properties;
+using Moq.Protected;
 using Xunit;
 
 namespace Moq.Tests
 {
 	public class StubExtensionsFixture
 	{
+		[Fact]
+		public void ShouldStubIndexers()
+		{
+			var mock = new Mock<IFoo>();
+
+			mock.SetupIndexer(f => f[1], "One");
+			Assert.Equal("One", mock.Object[1]);
+			mock.Object[2] = "Two";
+			Assert.Equal("Two", mock.Object[2]);
+			mock.Object[2] = "New";
+			Assert.Equal("New", mock.Object[2]);
+			Assert.Null(mock.Object[3]);
+			Assert.Null(mock.Object[1, "2"]);
+			mock.SetupIndexer(f => f[123, "X"], "123");
+			Assert.Equal("123", mock.Object[123, "X"]);
+
+			var foo1 = new Mock<IFoo>().Object;
+			var foo2 = new Mock<IFoo>().Object;
+
+			mock.SetupIndexer(f => f[foo1], "Foo1");
+			Assert.Null(mock.Object[foo2]);
+			Assert.Equal("Foo1", mock.Object[foo1]);
+
+			var exception = Assert.Throws<ArgumentException>(() => mock.SetupIndexer(m => m.NotAnIndexer(1)));
+			Expression<Func<IFoo, string>> badExpression = m => m.NotAnIndexer(1);
+			var expectedMessage = string.Format(
+					CultureInfo.CurrentCulture,
+					Resources.SetupNotIndexerGetter,
+					badExpression.ToStringFixed()
+			);
+			Assert.Contains(expectedMessage, exception.Message);
+			Assert.Equal("expression", exception.ParamName);
+
+			var protectedMock = new Mock<Protected>();
+			var protectedLike = protectedMock.Protected().As<ProtectedLike>();
+			protectedLike.SetupIndexer(m => m[1], "One");
+			Assert.Equal("One", protectedMock.Object.GetIndex(1));
+			protectedMock.Object.SetIndex(1, "New");
+			Assert.Equal("New", protectedMock.Object.GetIndex(1));
+			protectedMock.Object.SetIndex(2, "Two");
+			Assert.Equal("Two", protectedMock.Object.GetIndex(2));
+			Assert.Equal("New", protectedMock.Object.GetIndex(1));
+		}
+
 		[Fact]
 		public void ShouldStubPropertyWithoutInitialValue()
 		{
@@ -293,6 +342,27 @@ namespace Moq.Tests
 			object Object { get; set; }
 			IBar Bar { get; set; }
 			object GetOnly { get; }
+			string this[int key] { get;set; }
+			string this[int key,string key2] { get; set; }
+			string this[IFoo key] { get; set; }
+			string NotAnIndexer(int notAKey);
+		}
+
+		public abstract class Protected
+		{
+			protected abstract string this[int key] { get;set; }
+			public string GetIndex(int key)
+			{
+				return this[key];
+			}
+			public void SetIndex(int key, string value)
+			{
+				this[key] = value;
+			}
+		}
+
+		public interface ProtectedLike {
+			string this[int key] { get; set; }
 		}
 
 		public class Derived : Base

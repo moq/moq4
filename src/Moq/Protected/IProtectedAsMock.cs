@@ -57,6 +57,16 @@ namespace Moq.Protected
 		Mock<T> SetupProperty<TProperty>(Expression<Func<TAnalog, TProperty>> expression, TProperty initialValue = default(TProperty));
 
 		/// <summary>
+		/// Specifies that the given indexer should have "property behavior"
+		/// meaning that setting its value will cause it to be saved and later returned when the property is requested.
+		/// (This is also known as "stubbing".)
+		/// </summary>
+		/// <typeparam name="TProperty">Type of the indexer. Typically omitted as it can be inferred from the expression.</typeparam>
+		/// <param name="expression">Getter lambda expression that specifies the property.</param>
+		/// <param name="initialValue">Initial value for the property.</param>
+		Mock<T> SetupIndexer<TProperty>(Expression<Func<TAnalog, TProperty>> expression, TProperty initialValue = default(TProperty));
+		
+		/// <summary>
 		/// Return a sequence of values, once per call.
 		/// </summary>
 		/// <typeparam name="TResult">Type of the return value. Typically omitted as it can be inferred from the expression.</typeparam>

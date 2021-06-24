@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 
@@ -96,8 +97,9 @@ namespace Moq
 		private MockBehavior behavior;
 		private bool callBase;
 		private Switches switches;
+		private IndexerSetup indexerSetup;
 
-#region Ctors
+		#region Ctors
 
 		/// <summary>
 		/// Ctor invoked by AsTInterface exclusively.
@@ -189,6 +191,8 @@ namespace Moq
 			this.switches = Switches.Default;
 
 			this.CheckParameters();
+
+			this.indexerSetup = new IndexerSetup(this);
 		}
 
 		/// <summary>
@@ -639,6 +643,82 @@ namespace Moq
 			TProperty value = initialValue;
 			this.SetupGet(property).Returns(() => value);
 			Mock.SetupSet(this, property.AssignItIsAny(), condition: null).SetCallbackBehavior(new Action<TProperty>(p => value = p));
+			return this;
+		}
+
+		/// <summary>
+		///	  Specifies that the given indexer should have "property behavior",
+		///   meaning that setting its value will cause it to be saved and later returned when the property is requested.
+		///   (This is also known as "stubbing".)
+		/// </summary>
+		/// <typeparam name="TProperty">
+		///   Type of the property, inferred from the property expression (does not need to be specified).
+		/// </typeparam>
+		/// <param name="expression">
+		///	  Indexer getter expression to stub.  The key can be any allowed value
+		/// </param>
+		/// <example group="setups">
+		///   If you have an interface with an indexer with int key,
+		///   you might stub it using the following straightforward call:
+		///   <code>
+		///     var mock = new Mock&lt;IHaveIndexer&gt;();
+		///     mock.SetupIndexer(v => v[0]);
+		///   </code>
+		///   After the <c>SetupIndexer</c> call has been issued, setting and retrieving the object value
+		///   will behave as expected:
+		///   <code>
+		///     IHaveIndexer v = mock.Object;
+		///
+		///     v[1] = 1;
+		///     Assert.Equal(1, v[1]);
+		///     
+		///		v[2] = 2;
+		///		Assert.Equal(2, v[2]);
+		///		Assert.Equal(1, v[1]);
+		///   </code>
+		/// </example>
+		public Mock<T> SetupIndexer<TProperty>(Expression<Func<T, TProperty>> expression)
+		{
+			return this.SetupIndexer(expression, default(TProperty));
+		}
+
+		/// <summary>
+		///	  Specifies that the given indexer should have "property behavior",
+		///   meaning that setting its value will cause it to be saved and later returned when the property is requested.
+		///   This overload allows setting the initial value for the indexer for the keys combination in the expression.
+		///   (This is also known as "stubbing".)
+		/// </summary>
+		/// <typeparam name="TProperty">
+		///   Type of the property, inferred from the property expression (does not need to be specified).
+		/// </typeparam>
+		/// <param name="expression">
+		///	  Indexer getter expression to stub.  The key can be any allowed value
+		/// </param>
+		/// <param name="initialValue">Initial value for the keys combination in the expression</param>
+		/// <example group="setups">
+		///   If you have an interface with an indexer with int key,
+		///   you might stub it using the following straightforward call:
+		///   <code>
+		///     var mock = new Mock&lt;IHaveIndexer&gt;();
+		///     mock.SetupIndexer(v => v[0], 10);
+		///   </code>
+		///   After the <c>SetupIndexer</c> call has been issued, setting and retrieving the object value
+		///   will behave as expected:
+		///   <code>
+		///     IHaveIndexer v = mock.Object;
+		///		Assert.Equal(10, v[0]);
+		/// 
+		///     v[1] = 1;
+		///     Assert.Equal(1, v[1]);
+		///     
+		///		v[2] = 2;
+		///		Assert.Equal(2, v[2]);
+		///		Assert.Equal(1, v[1]);
+		///   </code>
+		/// </example>
+		public Mock<T> SetupIndexer<TProperty>(Expression<Func<T, TProperty>> expression, TProperty initialValue)
+		{
+			this.indexerSetup.Setup(expression, initialValue, nameof(expression));
 			return this;
 		}
 
@@ -1396,6 +1476,161 @@ namespace Moq
 			Mock.RaiseEvent(this, eventExpression, args);
 		}
 
-#endregion
+		#endregion
+		private class IndexerSetup
+		{
+			private readonly Mock<T> mock;
+			
+			private static MethodInfo itIsAnyMethod;
+			static IndexerSetup()
+			{
+				itIsAnyMethod = typeof(It).GetMethod("IsAny");
+			}
+			public IndexerSetup(Mock<T> mock)
+			{
+				this.mock = mock;
+			}
+
+			private MethodCallExpression GetGetter<TProperty>(Expression<Func<T, TProperty>> expression, string expressionParameterName)
+			{
+				Guard.IsIndexerGetter(expression, expressionParameterName);
+				return expression.Body as MethodCallExpression;
+			}
+
+			public void Setup<TProperty>(Expression<Func<T, TProperty>> expression, TProperty initialValue,string expressionParameterName)
+			{
+				var methodCall = GetGetter(expression, expressionParameterName);
+				var arguments = methodCall.Arguments.Select(a => a.PartialEval());
+				Guard.AreConstantExpressions(arguments, nameof(expressionParameterName));
+
+				List<IndexerArgsToValue<TProperty>> IndexerArgsToValues = new List<IndexerArgsToValue<TProperty>>();
+				IndexerArgsToValues.Add(
+					new IndexerArgsToValue<TProperty>(
+						arguments.Cast<ConstantExpression>().Select(exp => exp.Value).ToList(),
+						initialValue
+					)
+				);
+				TProperty getterValue = default(TProperty);
+
+				var method = methodCall.Method;
+				var setterMethod = GetSetter(method);
+				var setterItIsAny = GetSetterItIsAny(setterMethod);
+
+				var parameter = Expression.Parameter(typeof(T));
+				Expression[] gettertItAnyArguments = setterItIsAny.Take(setterItIsAny.Length - 1).ToArray();
+
+				var getterSetup = SetUp(method, gettertItAnyArguments);
+				getterSetup.SetCallbackBehavior(new Action<IInvocation>(invocation =>
+				{
+					var arguments = invocation.Arguments;
+					getterValue = default(TProperty);
+					foreach (var indexerArgsToValue in IndexerArgsToValues)
+					{
+						var match = indexerArgsToValue.HasArgs(arguments.ToList());
+						if (match)
+						{
+							getterValue = indexerArgsToValue.value;
+							break;
+						}
+					}
+				}));
+				getterSetup.SetReturnComputedValueBehavior(new Func<IInvocation, TProperty>((_) => getterValue));
+
+				SetUp(setterMethod, setterItIsAny).SetCallbackBehavior(new Action<IInvocation>(invocation =>
+				{
+					var arguments = invocation.Arguments;
+					var keys = arguments.Take(arguments.Count - 1).ToList();
+					var value = arguments.Last();
+					IndexerArgsToValue<TProperty> matching = default;
+					var matched = false;
+					foreach (var indexerArgsToValue in IndexerArgsToValues)
+					{
+						if (indexerArgsToValue.HasArgs(keys))
+						{
+							matching = indexerArgsToValue;
+							matched = true;
+							break;
+						}
+					}
+					if (matched)
+					{
+						IndexerArgsToValues.Remove(matching);
+
+					}
+
+					IndexerArgsToValues.Add(new IndexerArgsToValue<TProperty>(keys, (TProperty)value));
+				}));
+
+			}
+
+			private MethodCall SetUp(MethodInfo method, Expression[] itIsAnyExpressions)
+			{
+				var parameter = Expression.Parameter(typeof(T));
+				var methodCallExpression = Expression.Call(parameter, method, itIsAnyExpressions);
+				var lambda = Expression.Lambda(methodCallExpression, parameter);
+				return Mock.Setup(mock, lambda, null);
+			}
+
+			private MethodInfo GetSetter(MethodInfo getter)
+			{
+				var methodName = getter.Name;
+				var types = getter.GetParameters().Select(p => p.ParameterType).Concat(new Type[] { getter.ReturnType }).ToArray();
+				return getter.DeclaringType.GetMethod(
+					$"s{methodName.Substring(1)}",
+					BindingFlags.Public | BindingFlags.Instance,
+					null,
+					types,
+					null
+				);
+			}
+
+			private Expression[] GetSetterItIsAny(MethodInfo setterMethod)
+			{
+				var parameters = setterMethod.GetParameters();
+				return parameters.Select(p =>
+				{
+					var pType = p.ParameterType;
+					var itIsAny = itIsAnyMethod.MakeGenericMethod(pType);
+					return Expression.Call(itIsAny);
+
+				}).ToArray();
+
+
+			}
+
+			private struct IndexerArgsToValue<TProperty>
+			{
+				public List<object> args;
+				public TProperty value;
+
+				public IndexerArgsToValue(List<object> args, TProperty value)
+				{
+					this.args = args;
+					this.value = value;
+				}
+
+				public bool HasArgs(IList<object> otherArgs)
+				{
+					if(args.Count != otherArgs.Count)
+					{
+						return false;
+					}
+
+					for (var i = 0; i < args.Count; i++)
+					{
+						if (!object.Equals(args[i],otherArgs[i]))
+						{
+							return false;
+						}
+					}
+					return true;
+				}
+
+			}
+
+		}
+
 	}
+
+
 }

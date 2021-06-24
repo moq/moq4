@@ -88,6 +88,15 @@ namespace Moq.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Argument is not or cannot be evaluated to a constant expressions: {0}.
+        /// </summary>
+        internal static string ArgumentsNotConstantExpressions {
+            get {
+                return ResourceManager.GetString("ArgumentsNotConstantExpressions", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Can only add interfaces to the mock..
         /// </summary>
         internal static string AsMustBeInterface {
@@ -523,6 +532,15 @@ namespace Moq.Properties {
         internal static string SetupNotEventRemove {
             get {
                 return ResourceManager.GetString("SetupNotEventRemove", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Expression is not an indexer getter: {0}.
+        /// </summary>
+        internal static string SetupNotIndexerGetter {
+            get {
+                return ResourceManager.GetString("SetupNotIndexerGetter", resourceCulture);
             }
         }
         
